@@ -3,6 +3,7 @@ package runners
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -91,9 +92,23 @@ func getPVCUsage(clientset *kubernetes.Clientset, nodeName string, nodeIP string
 	}
 	token := string(tokenBytes)
 
+	//get ca cert
+	caPath := filepath.Join("/var/run/secrets/kubernetes.io/serviceaccount", "ca.crt")
+	caCert, err := os.ReadFile(caPath)
+	if err != nil {
+		return err
+	}
+	caCertPool := x509.NewCertPool()
+	ok := caCertPool.AppendCertsFromPEM(caCert)
+	if ok == false {
+		return fmt.Errorf("fail to load ca: %s", caPath)
+	}
+	tlsConfig := &tls.Config{}
+	tlsConfig.RootCAs = caCertPool
+
 	// create a HTTP client and transport with the bearer token
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: tlsConfig,
 	}
 	httpClient := &http.Client{Transport: tr}
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://%s:%d/stats/summary", nodeIP, 10250), nil)
